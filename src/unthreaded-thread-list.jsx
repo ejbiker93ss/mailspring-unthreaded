@@ -146,19 +146,17 @@ export default class UnthreadedThreadList extends React.Component {
     this.setState(this._getState());
   };
 
-  _onToggle = () => {
-    UnthreadedState.toggleEnabled();
-  };
-
-  _onSelect = item => {
+  _onSelect = (item, { expandThread = true } = {}) => {
     UnthreadedState.setSelected(item);
     if (item && item.thread) {
-      this.setState(prevState => ({
-        expandedThreads: {
-          ...prevState.expandedThreads,
-          [item.thread.id]: true,
-        },
-      }));
+      if (expandThread) {
+        this.setState(prevState => ({
+          expandedThreads: {
+            ...prevState.expandedThreads,
+            [item.thread.id]: true,
+          },
+        }));
+      }
       Actions.setFocus({ collection: 'thread', item: item.thread });
     }
   };
@@ -178,16 +176,11 @@ export default class UnthreadedThreadList extends React.Component {
       return;
     }
 
-    if (group.items.length > 1) {
-      this.setState(prevState => ({
-        expandedThreads: {
-          ...prevState.expandedThreads,
-          [group.id]: true,
-        },
-      }));
-    }
+    this._onSelect(leadItem, { expandThread: false });
 
-    this._onSelect(leadItem);
+    if (group.items.length > 1) {
+      this._onToggleThread(group.id);
+    }
   };
 
   _renderCore() {
@@ -308,11 +301,6 @@ export default class UnthreadedThreadList extends React.Component {
   render() {
     return (
       <div className="unthreaded-thread-list-wrap">
-        <div className="unthreaded-toolbar">
-          <button className="btn btn-toolbar" onClick={this._onToggle}>
-            {this.state.enabled ? 'Switch to Threaded' : 'Switch to Unthreaded'}
-          </button>
-        </div>
         <div className="unthreaded-thread-list-stage">
           <div
             className="unthreaded-core-thread-list"

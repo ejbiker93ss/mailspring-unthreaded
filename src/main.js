@@ -2,6 +2,7 @@ import { ComponentRegistry, WorkspaceStore } from 'mailspring-exports';
 
 import UnthreadedMessageList from './unthreaded-message-list';
 import UnthreadedThreadList from './unthreaded-thread-list';
+import UnthreadedToolbarToggle from './unthreaded-toolbar-toggle';
 
 // Activate is called when the package is loaded. If your package previously
 // saved state using `serialize` it is provided.
@@ -33,6 +34,11 @@ export function activate() {
   ComponentRegistry.register(UnthreadedMessageList, {
     location: WorkspaceStore.Location.MessageList,
   });
+
+  ComponentRegistry.register(UnthreadedToolbarToggle, {
+    location: WorkspaceStore.Sheet.Global.Toolbar.Left,
+    modes: ['split', 'list'],
+  });
 }
 
 // Serialize is called when your package is about to be unmounted.
@@ -49,6 +55,7 @@ export function serialize() {}
 export function deactivate() {
   ComponentRegistry.unregister(UnthreadedThreadList);
   ComponentRegistry.unregister(UnthreadedMessageList);
+  ComponentRegistry.unregister(UnthreadedToolbarToggle);
 
   if (CoreThreadList) {
     ComponentRegistry.register(CoreThreadList, {
