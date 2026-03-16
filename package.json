@@ -16,7 +16,7 @@
     "default": true,
     "composer": true
   },
-  "description": "Enter a description of your package!",
+  "description": "View emails as individual messages instead of grouped threads, with a toggle to switch between threaded and unthreaded views.",
   "devDependencies": {
     "@types/react": "^16.7.22",
     "typescript": "^3.6.3"
