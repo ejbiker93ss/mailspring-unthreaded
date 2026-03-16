@@ -1,17 +1,37 @@
-import { ComponentRegistry } from 'mailspring-exports';
+import { ComponentRegistry, WorkspaceStore } from 'mailspring-exports';
 
-import MyComposerButton from './my-composer-button';
-import MyMessageSidebar from './my-message-sidebar';
+import UnthreadedMessageList from './unthreaded-message-list';
+import UnthreadedThreadList from './unthreaded-thread-list';
 
 // Activate is called when the package is loaded. If your package previously
 // saved state using `serialize` it is provided.
 //
+let CoreThreadList = null;
+let CoreMessageList = null;
+
 export function activate() {
-  ComponentRegistry.register(MyComposerButton, {
-    role: 'Composer:ActionButton',
+  CoreThreadList = ComponentRegistry.findComponentByName('ThreadList');
+  CoreMessageList = ComponentRegistry.findComponentByName('MessageList');
+
+  UnthreadedThreadList.CoreComponent = CoreThreadList;
+  UnthreadedMessageList.CoreComponent = CoreMessageList;
+
+  if (CoreThreadList) {
+    ComponentRegistry.unregister(CoreThreadList);
+  }
+
+  if (CoreMessageList) {
+    ComponentRegistry.unregister(CoreMessageList);
+  }
+
+  ComponentRegistry.register(UnthreadedThreadList, {
+    location: WorkspaceStore.Location.ThreadList,
+    role: 'ThreadList',
+    modes: ['split', 'list'],
   });
-  ComponentRegistry.register(MyMessageSidebar, {
-    role: 'MessageListSidebar:ContactCard',
+
+  ComponentRegistry.register(UnthreadedMessageList, {
+    location: WorkspaceStore.Location.MessageList,
   });
 }
 
@@ -27,6 +47,23 @@ export function serialize() {}
 // subscribing to events, release them here.
 //
 export function deactivate() {
-  ComponentRegistry.unregister(MyComposerButton);
-  ComponentRegistry.unregister(MyMessageSidebar);
+  ComponentRegistry.unregister(UnthreadedThreadList);
+  ComponentRegistry.unregister(UnthreadedMessageList);
+
+  if (CoreThreadList) {
+    ComponentRegistry.register(CoreThreadList, {
+      location: WorkspaceStore.Location.ThreadList,
+      role: 'ThreadList',
+      modes: ['split', 'list'],
+    });
+  }
+
+  if (CoreMessageList) {
+    ComponentRegistry.register(CoreMessageList, {
+      location: WorkspaceStore.Location.MessageList,
+    });
+  }
+
+  CoreThreadList = null;
+  CoreMessageList = null;
 }

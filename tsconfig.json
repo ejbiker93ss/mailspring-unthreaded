@@ -11,6 +11,13 @@
     "inlineSourceMap": true,
     "outDir": "lib",
     "baseUrl": "src",
-    "typeRoots": ["./types/"]
-  }
+    "skipLibCheck": true
+  },
+  "include": [
+    "src/main.js",
+    "src/unthreaded-state.js",
+    "src/unthreaded-thread-list.jsx",
+    "src/unthreaded-message-list.jsx"
+  ],
+  "exclude": ["node_modules", "lib"]
 }
