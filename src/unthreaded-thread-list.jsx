@@ -1,5 +1,5 @@
-import { React, Rx, Utils, Actions, DatabaseStore, FocusedPerspectiveStore } from 'mailspring-exports';
-import { Spinner } from 'mailspring-component-kit';
+import { React, Rx, Utils, Actions, DatabaseStore, FocusedPerspectiveStore, CategoryStore } from 'mailspring-exports';
+import { Spinner, ScrollRegion } from 'mailspring-component-kit';
 import MailspringStore from 'mailspring-store';
 
 import UnthreadedState from './unthreaded-state';
@@ -15,6 +15,7 @@ class VisibleMessagesStore extends MailspringStore {
     this._requestId = 0;
     this.listenTo(FocusedPerspectiveStore, this._reload);
     this.listenTo(DatabaseStore, this._onDatabaseChanged);
+    this.listenTo(UnthreadedState, this._reload);
     this._reload();
   }
 
@@ -39,6 +40,28 @@ class VisibleMessagesStore extends MailspringStore {
     }
     this._reload();
   };
+
+  _shouldIncludeMessage(message) {
+    if (!message || message.isHidden()) {
+      return false;
+    }
+
+    const viewingTrash = FocusedPerspectiveStore.current().categoriesSharedRole() === 'trash';
+    if (viewingTrash) {
+      return true;
+    }
+
+    if (UnthreadedState.enabled() && UnthreadedState.isGrouped()) {
+      return true;
+    }
+
+    const trash = CategoryStore.getTrashCategory(message.accountId);
+    if (!trash) {
+      return true;
+    }
+
+    return !message.folder || message.folder.id !== trash.id;
+  }
 
   _reload = () => {
     this._disposeSubscription();
@@ -81,7 +104,7 @@ class VisibleMessagesStore extends MailspringStore {
       });
 
       const messages = (await DatabaseStore.findAll(Message, { threadId: ids }))
-        .filter(message => !message.isHidden())
+        .filter(message => this._shouldIncludeMessage(message))
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .map(message => ({
           id: message.id,
@@ -136,6 +159,7 @@ export default class UnthreadedThreadList extends React.Component {
 
   _getState = () => ({
     enabled: UnthreadedState.enabled(),
+    layout: UnthreadedState.layout(),
     items: visibleMessagesStore.items(),
     loading: visibleMessagesStore.loading(),
     selected: UnthreadedState.selected(),
@@ -149,7 +173,7 @@ export default class UnthreadedThreadList extends React.Component {
   _onSelect = (item, { expandThread = true } = {}) => {
     UnthreadedState.setSelected(item);
     if (item && item.thread) {
-      if (expandThread) {
+      if (expandThread && UnthreadedState.isGrouped()) {
         this.setState(prevState => ({
           expandedThreads: {
             ...prevState.expandedThreads,
@@ -223,9 +247,31 @@ export default class UnthreadedThreadList extends React.Component {
     return groups;
   }
 
+  _renderUngroupedList() {
+    return this.state.items.map((item, index) =>
+      this._renderItem(item, {
+        isLast: index === this.state.items.length - 1,
+      })
+    );
+  }
+
+  _isInTrash(item) {
+    if (!item || !item.message) {
+      return false;
+    }
+
+    const trash = CategoryStore.getTrashCategory(item.message.accountId);
+    if (!trash) {
+      return false;
+    }
+
+    return !!item.message.folder && item.message.folder.id === trash.id;
+  }
+
   _renderItem(item, { nested = false, isLast = false, onClick = null } = {}) {
     const selectedId = this.state.selected && this.state.selected.message && this.state.selected.message.id;
     const selected = selectedId === item.message.id;
+    const inTrash = this._isInTrash(item);
     const from = item.message.from && item.message.from[0];
     const fromName = from ? from.displayName({ compact: true }) : '';
     const subject = item.message.subject || '(No Subject)';
@@ -234,7 +280,7 @@ export default class UnthreadedThreadList extends React.Component {
     return (
       <div
         key={item.message.id}
-        className={`unthreaded-row ${nested ? 'nested' : ''} ${isLast ? 'last' : ''} ${selected ? 'selected' : ''} ${item.message.unread ? 'unread' : ''}`}
+        className={`unthreaded-row ${nested ? 'nested' : ''} ${isLast ? 'last' : ''} ${selected ? 'selected' : ''} ${item.message.unread ? 'unread' : ''} ${inTrash ? 'in-trash' : ''}`}
         onClick={event => {
           event.stopPropagation();
           if (onClick) {
@@ -245,10 +291,12 @@ export default class UnthreadedThreadList extends React.Component {
         }}
       >
         <div className="unthreaded-row-top">
-          <div className="unthreaded-from">{fromName}</div>
-          <div className="unthreaded-date">{date}</div>
+          <div className={`unthreaded-from ${inTrash ? 'trashed' : ''}`}>{fromName}</div>
+          <div className={`unthreaded-row-meta ${inTrash ? 'trashed' : ''}`}>
+            <div className="unthreaded-date">{date}</div>
+          </div>
         </div>
-        <div className="unthreaded-subject">{subject}</div>
+        <div className={`unthreaded-subject ${inTrash ? 'trashed' : ''}`}>{subject}</div>
         <div className="unthreaded-snippet">{item.message.snippet || ''}</div>
       </div>
     );
@@ -308,7 +356,7 @@ export default class UnthreadedThreadList extends React.Component {
           >
             {this._renderCore()}
           </div>
-          <div
+          <ScrollRegion
             className="unthreaded-thread-list"
             style={{
               opacity: this.state.enabled ? 1 : 0,
@@ -316,8 +364,10 @@ export default class UnthreadedThreadList extends React.Component {
             }}
           >
             {this.state.loading ? <Spinner visible={true} /> : null}
-            {this._groupedItems().map(group => this._renderGroup(group))}
-          </div>
+            {this.state.layout === 'ungrouped'
+              ? this._renderUngroupedList()
+              : this._groupedItems().map(group => this._renderGroup(group))}
+          </ScrollRegion>
         </div>
       </div>
     );

@@ -20,18 +20,12 @@ export default class UnthreadedMessageList extends React.Component {
 
   componentDidMount() {
     this._unsubscribers = [UnthreadedState.listen(this._onStateChange), MessageStore.listen(this._onStateChange)];
-    this._ensureExpanded();
-    this._scrollSelectedIntoView();
-    this._applySingleMessageView();
-    this._expandSelectedQuotedText();
+    this._syncSelectedMessageView();
   }
 
   componentDidUpdate(prevProps, prevState) {
-    if (!Utils.isEqualReact(prevState, this.state)) {
-      this._ensureExpanded();
-      this._scrollSelectedIntoView();
-      this._applySingleMessageView();
-      this._expandSelectedQuotedText();
+    if (!Utils.isEqualReact(prevState, this.state) || !Utils.isEqualReact(prevProps, this.props)) {
+      this._syncSelectedMessageView();
     }
   }
 
@@ -46,6 +40,7 @@ export default class UnthreadedMessageList extends React.Component {
 
   _getState = () => ({
     enabled: UnthreadedState.enabled(),
+    layout: UnthreadedState.layout(),
     selected: UnthreadedState.selected(),
     threadId: MessageStore.threadId(),
     itemIds: MessageStore.itemIds(),
@@ -54,6 +49,19 @@ export default class UnthreadedMessageList extends React.Component {
   _onStateChange = () => {
     this.setState(this._getState());
   };
+
+  _syncSelectedMessageView() {
+    this._ensureExpanded();
+    window.requestAnimationFrame(() => {
+      this._applySingleMessageView();
+      this._scrollSelectedIntoView();
+      this._expandSelectedQuotedText();
+
+      window.requestAnimationFrame(() => {
+        this._applySingleMessageView();
+      });
+    });
+  }
 
   _ensureExpanded() {
     if (!this.state.enabled) {
@@ -144,7 +152,7 @@ export default class UnthreadedMessageList extends React.Component {
 
     const renderedItems = node.querySelectorAll('.message-item-wrap');
     renderedItems.forEach((item, index) => {
-      item.style.display = index < visibleIndex ? 'none' : '';
+      item.style.display = index === visibleIndex ? '' : 'none';
     });
 
     node.querySelectorAll('.footer-reply-area-wrap').forEach(item => {

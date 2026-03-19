@@ -4,6 +4,7 @@ class UnthreadedState extends MailspringStore {
   constructor() {
     super();
     this._enabled = this._loadEnabled();
+    this._layout = this._loadLayout();
     this._selected = null;
   }
 
@@ -16,8 +17,25 @@ class UnthreadedState extends MailspringStore {
     }
   }
 
+  _loadLayout() {
+    try {
+      const value = window.localStorage.getItem('mailspring-unthreaded:layout');
+      return value === 'ungrouped' ? 'ungrouped' : 'grouped';
+    } catch (err) {
+      return 'grouped';
+    }
+  }
+
   enabled() {
     return this._enabled;
+  }
+
+  layout() {
+    return this._layout;
+  }
+
+  isGrouped() {
+    return this._layout !== 'ungrouped';
   }
 
   selected() {
@@ -37,6 +55,18 @@ class UnthreadedState extends MailspringStore {
 
   toggleEnabled = () => {
     this.setEnabled(!this._enabled);
+  };
+
+  setLayout = layout => {
+    const nextLayout = layout === 'ungrouped' ? 'ungrouped' : 'grouped';
+    if (this._layout === nextLayout) {
+      return;
+    }
+    this._layout = nextLayout;
+    try {
+      window.localStorage.setItem('mailspring-unthreaded:layout', nextLayout);
+    } catch (err) {}
+    this.trigger();
   };
 
   setSelected = selected => {
