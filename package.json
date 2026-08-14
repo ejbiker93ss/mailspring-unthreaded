@@ -1,10 +1,10 @@
 {
-  "name": "sample",
+  "name": "mailspring-unthreaded",
   "main": "./lib/main",
-  "version": "0.1.0",
+  "version": "1.0.2",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "https://github.com/ejbiker93ss/mailspring-unthreaded.git"
   },
   "scripts": {
     "build": "tsc"
@@ -13,8 +13,7 @@
     "mailspring": ">=1.6.3"
   },
   "windowTypes": {
-    "default": true,
-    "composer": true
+    "default": true
   },
   "description": "View emails as individual messages instead of grouped threads, with a toggle to switch between threaded and unthreaded views.",
   "devDependencies": {

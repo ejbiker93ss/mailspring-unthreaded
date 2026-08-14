@@ -10,13 +10,48 @@ class VisibleMessagesStore extends MailspringStore {
   constructor() {
     super();
     this._items = [];
-    this._loading = true;
+    this._loading = false;
     this._subscription = null;
     this._requestId = 0;
-    this.listenTo(FocusedPerspectiveStore, this._reload);
+    this._messageRequestId = 0;
+    this._messageReloadTimer = null;
+    this._threads = [];
+    this._started = false;
+    this._lastEnabled = UnthreadedState.enabled();
+    this._lastLayout = UnthreadedState.layout();
+  }
+
+  start() {
+    if (this._started) {
+      return;
+    }
+
+    this._started = true;
+    this._lastEnabled = UnthreadedState.enabled();
+    this._lastLayout = UnthreadedState.layout();
+    this.listenTo(FocusedPerspectiveStore, this._onPerspectiveChanged);
     this.listenTo(DatabaseStore, this._onDatabaseChanged);
-    this.listenTo(UnthreadedState, this._reload);
-    this._reload();
+    this.listenTo(UnthreadedState, this._onUnthreadedStateChanged);
+
+    if (this._lastEnabled) {
+      this._reloadPerspective();
+    }
+  }
+
+  stop() {
+    if (!this._started) {
+      return;
+    }
+
+    this._started = false;
+    this._requestId += 1;
+    this._messageRequestId += 1;
+    this._disposeSubscription();
+    this._cancelMessageReload();
+    this.stopListeningToAll();
+    this._threads = [];
+    this._items = [];
+    this._loading = false;
   }
 
   items() {
@@ -34,11 +69,59 @@ class VisibleMessagesStore extends MailspringStore {
     }
   }
 
-  _onDatabaseChanged = change => {
-    if (!change || !['Message', 'Thread'].includes(change.objectClass)) {
+  _cancelMessageReload() {
+    if (this._messageReloadTimer) {
+      clearTimeout(this._messageReloadTimer);
+      this._messageReloadTimer = null;
+    }
+  }
+
+  _onPerspectiveChanged = () => {
+    if (UnthreadedState.enabled()) {
+      this._reloadPerspective();
+    }
+  };
+
+  _onUnthreadedStateChanged = () => {
+    const enabled = UnthreadedState.enabled();
+    const layout = UnthreadedState.layout();
+
+    if (enabled !== this._lastEnabled) {
+      this._lastEnabled = enabled;
+      this._lastLayout = layout;
+      if (enabled) {
+        this._reloadPerspective();
+      } else {
+        this._requestId += 1;
+        this._messageRequestId += 1;
+        this._disposeSubscription();
+        this._cancelMessageReload();
+        this._threads = [];
+        this._items = [];
+        this._loading = false;
+        this.trigger();
+      }
       return;
     }
-    this._reload();
+
+    if (enabled && layout !== this._lastLayout) {
+      this._lastLayout = layout;
+      this._scheduleMessageReload(0);
+    }
+  };
+
+  _onDatabaseChanged = change => {
+    if (!UnthreadedState.enabled() || !change || change.objectClass !== 'Message') {
+      return;
+    }
+
+    const visibleThreadIds = new Set(this._threads.map(thread => thread.id));
+    const affectsVisibleThread = (change.objects || []).some(message =>
+      visibleThreadIds.has(message.threadId)
+    );
+    if (affectsVisibleThread) {
+      this._scheduleMessageReload();
+    }
   };
 
   _shouldIncludeMessage(message) {
@@ -63,12 +146,72 @@ class VisibleMessagesStore extends MailspringStore {
     return !message.folder || message.folder.id !== trash.id;
   }
 
-  _reload = () => {
+  _scheduleMessageReload(delay = 100) {
+    this._cancelMessageReload();
+    this._messageReloadTimer = setTimeout(() => {
+      this._messageReloadTimer = null;
+      this._loadMessagesForThreads(this._requestId, this._threads);
+    }, delay);
+  }
+
+  async _loadMessagesForThreads(requestId, threads) {
+    const messageRequestId = ++this._messageRequestId;
+    const ids = threads.map(thread => thread.id);
+    if (ids.length === 0) {
+      this._items = [];
+      this._loading = false;
+      UnthreadedState.ensureValidSelection([]);
+      this.trigger();
+      return;
+    }
+
+    const threadMap = {};
+    threads.forEach(thread => {
+      threadMap[thread.id] = thread;
+    });
+
+    try {
+      const messages = (await DatabaseStore.findAll(Message, { threadId: ids }))
+        .filter(message => this._shouldIncludeMessage(message))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .map(message => ({
+          id: message.id,
+          message,
+          thread: threadMap[message.threadId],
+        }))
+        .filter(item => !!item.thread);
+
+      if (
+        !this._started ||
+        !UnthreadedState.enabled() ||
+        requestId !== this._requestId ||
+        messageRequestId !== this._messageRequestId
+      ) {
+        return;
+      }
+
+      this._items = messages;
+      this._loading = false;
+      UnthreadedState.ensureValidSelection(messages);
+      this.trigger();
+    } catch (err) {
+      if (requestId === this._requestId && messageRequestId === this._messageRequestId) {
+        this._loading = false;
+        this.trigger();
+      }
+      console.error('mailspring-unthreaded: Unable to load visible messages', err);
+    }
+  }
+
+  _reloadPerspective = () => {
     this._disposeSubscription();
+    this._cancelMessageReload();
     this._requestId += 1;
+    this._messageRequestId += 1;
     const requestId = this._requestId;
     const threadSubscription = FocusedPerspectiveStore.current().threads();
     if (!threadSubscription) {
+      this._threads = [];
       this._items = [];
       this._loading = false;
       UnthreadedState.ensureValidSelection([]);
@@ -84,48 +227,18 @@ class VisibleMessagesStore extends MailspringStore {
     this._subscription = Rx.Observable.fromNamedQuerySubscription(
       'unthreaded-visible-threads',
       threadSubscription
-    ).subscribe(async resultSet => {
-      if (requestId !== this._requestId) {
+    ).subscribe(resultSet => {
+      if (!this._started || !UnthreadedState.enabled() || requestId !== this._requestId) {
         return;
       }
       const threads = resultSet.models ? resultSet.models() : [];
-      const ids = threads.map(thread => thread.id);
-      if (ids.length === 0) {
-        this._items = [];
-        this._loading = false;
-        UnthreadedState.ensureValidSelection([]);
-        this.trigger();
-        return;
-      }
-
-      const threadMap = {};
-      threads.forEach(thread => {
-        threadMap[thread.id] = thread;
-      });
-
-      const messages = (await DatabaseStore.findAll(Message, { threadId: ids }))
-        .filter(message => this._shouldIncludeMessage(message))
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        .map(message => ({
-          id: message.id,
-          message,
-          thread: threadMap[message.threadId],
-        }))
-        .filter(item => !!item.thread);
-
-      if (requestId !== this._requestId) {
-        return;
-      }
-
-      this._items = messages;
-      this._loading = false;
-      UnthreadedState.ensureValidSelection(messages);
-      this.trigger();
+      this._threads = threads;
+      this._scheduleMessageReload();
     });
   };
 }
 
-const visibleMessagesStore = new VisibleMessagesStore();
+export const visibleMessagesStore = new VisibleMessagesStore();
 
 export default class UnthreadedThreadList extends React.Component {
   static displayName = 'UnthreadedThreadList';
@@ -347,21 +460,15 @@ export default class UnthreadedThreadList extends React.Component {
   }
 
   render() {
+    if (!this.state.enabled) {
+      return this._renderCore();
+    }
+
     return (
       <div className="unthreaded-thread-list-wrap">
         <div className="unthreaded-thread-list-stage">
-          <div
-            className="unthreaded-core-thread-list"
-            style={{ visibility: this.state.enabled ? 'hidden' : 'visible' }}
-          >
-            {this._renderCore()}
-          </div>
           <ScrollRegion
             className="unthreaded-thread-list"
-            style={{
-              opacity: this.state.enabled ? 1 : 0,
-              pointerEvents: this.state.enabled ? 'auto' : 'none',
-            }}
           >
             {this.state.loading ? <Spinner visible={true} /> : null}
             {this.state.layout === 'ungrouped'
