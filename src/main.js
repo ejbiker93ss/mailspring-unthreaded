@@ -6,7 +6,7 @@ import UnthreadedMessageList from './unthreaded-message-list';
 
 import UnthreadedMessageTrashButton from './unthreaded-message-trash-button';
 
-import UnthreadedThreadList from './unthreaded-thread-list';
+import UnthreadedThreadList, { visibleMessagesStore } from './unthreaded-thread-list';
 
 import UnthreadedToolbarToggle from './unthreaded-toolbar-toggle';
 
@@ -25,6 +25,8 @@ let CoreMessageList = null;
 
 
 export function activate() {
+
+  visibleMessagesStore.start();
 
   CoreThreadList = ComponentRegistry.findComponentByName('ThreadList');
 
@@ -117,6 +119,8 @@ export function serialize() {}
 //
 
 export function deactivate() {
+
+  visibleMessagesStore.stop();
 
   ComponentRegistry.unregister(UnthreadedThreadList);
 

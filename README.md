@@ -15,6 +15,7 @@ By default, Mailspring groups emails by conversation (thread). This plugin gives
 - **Quoted-text expansion** — The selected message automatically expands any hidden quoted text so you can see the full content at a glance.
 - **Persistent preference** — The enabled/disabled state is saved to `localStorage`, so your choice survives app restarts.
 - **Non-destructive** — Disabling the plugin (or toggling back to threaded mode) fully restores Mailspring's original thread list and message viewer.
+- **Idle when disabled** — Thread and message database subscriptions are released in threaded mode, avoiding background mailbox work.
 
 ## Installation
 
@@ -29,6 +30,8 @@ By default, Mailspring groups emails by conversation (thread). This plugin gives
    npm run build
    ```
 4. Restart Mailspring (or reload the main window via the developer tools).
+
+When upgrading from v1.0.1 or earlier, remove any old `packages/sample/` copy created by Mailspring's package installer before installing v1.0.2. Manual installations already stored in `packages/mailspring-unthreaded/` can be replaced in place.
 
 The `lib/` directory is already committed to this repository, so if you just want to use the plugin without building it yourself you can skip steps 3–4 and simply restart Mailspring after placing the folder.
 
